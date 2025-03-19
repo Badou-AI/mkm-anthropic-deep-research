@@ -1,124 +1,144 @@
-# Anthropic-OpenAI Integration
+# Anthropic-OpenAI Agent
 
-A powerful Python package that combines Anthropic's Claude and OpenAI's capabilities to create an advanced agent system with deep web search functionality.
+A powerful conversational agent system combining Anthropic's Claude and OpenAI APIs with web search capabilities.
 
 ## Features
 
-- **Agent Loop System**: Interactive conversational agent system that processes user queries
-- **Deep Iterative Web Search**: Multi-level research through successive search refinements
-- **Simple Web Search**: Parallel web searches with intelligent aggregation of results
-- **Cross-API Integration**: Seamlessly combines Anthropic and OpenAI APIs
-- **Streaming Support**: Real-time streaming of AI responses with live thinking capabilities
-- **Tool System**: Extensible tool framework for enhanced functionality
-- **CLI Interface**: Simple command-line interface for interacting with the agent
+- Cross-API integration between Anthropic and OpenAI
+- Web search capabilities:
+  - Simple Web Search: Parallel searches with intelligent aggregation
+  - Deep Iterative Web Search: Multi-level research with successive refinements
+- Automatic search strategy selection based on query complexity
+- Streaming support for real-time AI responses
+- Extensible tool framework
+- Multiple interfaces:
+  - Command-line interface
+  - Web API (FastAPI)
+  - Web UI (Next.js)
 
 ## Installation
 
-```bash
-# Clone the repository
-git clone https://github.com/milkymap/anthropic-deep-research.git 
-cd anthropic-deep-research
+### Prerequisites
 
-# Install dependencies
-python -m venv env 
-source env/bin/activate
+- Python 3.12+
+- Node.js 18+ (for the frontend)
+- API keys for Anthropic and OpenAI
+
+### Setup
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/anthropic-openai.git
+cd anthropic-openai
+```
+
+2. Create a virtual environment and install dependencies:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e .
 ```
 
-## Requirements
-
-- Python 3.12+
-- Anthropic API key
-- OpenAI API key
-
-## Configuration
-
-Create a `.env` file in the project root with the following content:
-
+3. Create a `.env` file in the root directory with your API keys:
 ```
 ANTHROPIC_API_KEY=your_anthropic_api_key
 OPENAI_API_KEY=your_openai_api_key
-LOG_LEVEL=INFO
+```
+
+4. Install frontend dependencies:
+```bash
+cd frontend
+npm install
 ```
 
 ## Usage
 
-### Start the Agent Loop
+### CLI Mode
 
 ```bash
-python -m src launch-engine 
+python -m src launch-engine
 ```
 
-This launches the interactive agent that accepts user queries and processes them.
+### API Server
 
-### Using the Web Search Capabilities
-
-The agent has two main web search tools:
-
-1. **Simple Web Search**: For quick, parallel lookups across multiple queries
-2. **Deep Iterative Web Search**: For comprehensive, multi-stage research on complex topics
-
-The agent automatically determines which search approach to use based on your query complexity.
-
-Example interaction:
-
-```
-query: What are the latest developments in quantum computing?
+```bash
+python -m src launch-server --reload
 ```
 
-The agent will:
-1. Analyze your query
-2. Determine the appropriate search method
-3. Extract relevant information from the web
-4. Present a comprehensive, well-structured response
+The API will be available at http://localhost:8000 with the following endpoints:
+- `/chat` - For general chat interactions
+- `/search` - For search capabilities
 
-## Technical Implementation
+### Web UI
 
-### Architecture
+```bash
+cd frontend
+npm run dev
+```
 
-- `agent_loop.py`: Core agent implementation with conversation handling
-- `types.py`: Data models for messages, roles, and stop reasons
-- `definitions.py`: System prompts and tool definitions
-- `log.py`: Logging configuration
-- `settings/`: Configuration management with Pydantic
+The web interface will be available at http://localhost:3000
 
-### Web Search Tools
+## Architecture
 
-#### Deep Iterative Web Search
+### Backend Components
 
-Performs comprehensive, multi-level research through:
-- Successive search refinements
-- Exploration with increasing depth
-- Identification of key subtopics
-- Resolution of knowledge gaps
-- Cross-referencing across sources
+- `agent_loop.py`: Core conversation agent implementation
+- `definitions.py`: Tool definitions and system prompts
+- `types.py`: Type definitions for the system
+- `api/`: FastAPI implementation
+  - `app.py`: Main FastAPI application
+  - `routers/`: API route handlers
+  - `models/`: Pydantic models for request/response validation
 
-#### Simple Web Search
+### Frontend Components
 
-Conducts parallel web searches with:
-- Multiple simultaneous queries
-- Intelligent aggregation of results
-- Removal of redundancies
-- Clear, organized formatting
+- Next.js application with the following features:
+  - Chat interface with streaming support
+  - Search interface with configuration options
+  - Responsive design with Tailwind CSS
 
-## Development
+## Extending the System
 
 ### Adding New Tools
 
-To extend the agent with new tools:
+1. Define your tool schema in `definitions.py`:
+```python
+my_new_tool = {
+    "name": "my_new_tool",
+    "description": "Description of what the tool does",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "param1": {"type": "string", "description": "Description of parameter 1"},
+            "param2": {"type": "integer", "description": "Description of parameter 2"}
+        },
+        "required": ["param1"]
+    }
+}
+```
 
-1. Define the tool schema in `definitions.py`
-2. Implement the tool function in `agent_loop.py`
-3. Register the tool in the agent loop's conversation handler
+2. Implement the tool function in `agent_loop.py` as a method of the `AgentLoop` class:
+```python
+def my_new_tool(self, param1: str, param2: int = 0) -> List[Dict]:
+    # Tool implementation
+    result = f"Processed {param1} with {param2}"
+    return [
+        {
+            "type": "text",
+            "text": result
+        }
+    ]
+```
 
-### Modifying System Prompts
-
-System prompts define the agent's behavior and can be adjusted in `definitions.py`.
+3. Register the tool in the conversation handler:
+```python
+completion_res = self.handle_conversation(
+    conversation_history=conversation_history,
+    system=SystemPromptDefinitions.MAIN_AGENT_LOOP,
+    tools=[deep_iterattive_web_search_tool, my_new_tool]
+)
+```
 
 ## License
 
-[Specify License]
-
-## Credits
-
-Developed by [milkymap](mailto:ibrahima.elmokhtar@gmail.com)
+MIT
