@@ -80,39 +80,54 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             request_data = json.loads(data)
             
-            # Parse the request
-            messages = [Message(**msg) for msg in request_data.get("messages", [])]
-            model = request_data.get("model", "claude-3-7-sonnet-latest")
-            max_tokens = request_data.get("max_tokens", 2048)
-            system_prompt = request_data.get("system_prompt", "You are a helpful assistant.")
-            
-            # Convert to internal format
-            conversation_history = [ChatMessage(role=msg.role, content=msg.content) for msg in messages]
-            
-            # Get completion stream
-            completion_stream = agent_loop.handle_conversation(
-                conversation_history=conversation_history,
-                system=system_prompt,
-                model=model,
-                max_tokens=max_tokens,
-                tools=[]
-            )
-            
-            # Stream chunks to the client
-            for chunk in completion_stream:
-                if chunk.type == "content_block_delta" and hasattr(chunk.delta, "text_delta"):
+            try:
+                # Parse the request
+                messages = [Message(**msg) for msg in request_data.get("messages", [])]
+                model = request_data.get("model", "claude-3-7-sonnet-latest")
+                max_tokens = request_data.get("max_tokens", 2048)
+                system_prompt = request_data.get("system_prompt", "You are a helpful assistant.")
+                
+                # Convert to internal format
+                conversation_history = [ChatMessage(role=msg.role, content=msg.content) for msg in messages]
+                
+                # Get completion stream
+                completion_stream = agent_loop.handle_conversation(
+                    conversation_history=conversation_history,
+                    system=system_prompt,
+                    model=model,
+                    max_tokens=max_tokens,
+                    tools=[]
+                )
+                
+                if completion_stream is None:
                     await websocket.send_text(json.dumps({
-                        "type": "chunk",
-                        "content": chunk.delta.text
+                        "type": "error",
+                        "message": "Failed to get completion stream from AI provider"
                     }))
-                elif chunk.type == "message_delta":
-                    await websocket.send_text(json.dumps({
-                        "type": "stop",
-                        "stop_reason": chunk.delta.stop_reason
-                    }))
+                    continue
+                
+                # Stream chunks to the client
+                for chunk in completion_stream:
+                    if chunk.type == "content_block_delta" and hasattr(chunk.delta, "text_delta"):
+                        await websocket.send_text(json.dumps({
+                            "type": "chunk",
+                            "content": chunk.delta.text
+                        }))
+                    elif chunk.type == "message_delta":
+                        await websocket.send_text(json.dumps({
+                            "type": "stop",
+                            "stop_reason": chunk.delta.stop_reason
+                        }))
+                        break  # Ensure we exit the loop after stop message
+            except Exception as inner_e:
+                print(f"Inner processing error: {inner_e}")
+                await websocket.send_text(json.dumps({"type": "error", "message": f"Processing error: {str(inner_e)}"}))
             
     except WebSocketDisconnect:
         print("Client disconnected")
     except Exception as e:
-        await websocket.send_text(json.dumps({"type": "error", "message": str(e)}))
-        print(f"Error: {e}")
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "message": f"Connection error: {str(e)}"})) 
+        except:
+            print(f"Could not send error to client: {e}")
+        print(f"WebSocket error: {e}")

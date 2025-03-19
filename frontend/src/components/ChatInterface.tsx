@@ -39,24 +39,35 @@ const ChatInterface = () => {
   }, [messages, streamingMessage]);
 
   const connectWebSocket = () => {
-    const socket = new WebSocket('ws://localhost:8000/chat/ws');
+    // Use window.location to dynamically determine the host
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.hostname;
+    const port = '8000'; // Backend port
+    const socket = new WebSocket(`${protocol}//${host}:${port}/chat/ws`);
     
     socket.onopen = () => {
       setWsConnected(true);
       console.log('WebSocket connected');
+      setError(''); // Clear any previous errors when connected
     };
     
     socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      if (data.type === 'chunk') {
-        setStreamingMessage(prev => prev + data.content);
-      } else if (data.type === 'stop') {
-        setMessages(prev => [...prev, { role: 'assistant', content: streamingMessage }]);
-        setStreamingMessage('');
-        setIsLoading(false);
-      } else if (data.type === 'error') {
-        setError(data.message);
+      try {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'chunk') {
+          setStreamingMessage(prev => prev + data.content);
+        } else if (data.type === 'stop') {
+          setMessages(prev => [...prev, { role: 'assistant', content: streamingMessage }]);
+          setStreamingMessage('');
+          setIsLoading(false);
+        } else if (data.type === 'error') {
+          setError(data.message);
+          setIsLoading(false);
+        }
+      } catch (err) {
+        console.error('Error parsing WebSocket message:', err);
+        setError('Failed to parse WebSocket message');
         setIsLoading(false);
       }
     };
@@ -69,7 +80,7 @@ const ChatInterface = () => {
     
     socket.onerror = (error) => {
       console.error('WebSocket error:', error);
-      setError('WebSocket connection error');
+      setError(`WebSocket connection error: ${error}`);
       setWsConnected(false);
       ws.current = null;
     };
