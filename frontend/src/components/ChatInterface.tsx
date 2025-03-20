@@ -22,7 +22,7 @@ const ChatInterface = () => {
   const [wsEnabled, setWsEnabled] = useState(true);
   const [wsConnected, setWsConnected] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
-  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   
   const ws = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);

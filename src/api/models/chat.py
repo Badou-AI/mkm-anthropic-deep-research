@@ -1,67 +1,62 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
-from sqlalchemy.orm import relationship, declarative_base
-from sqlalchemy.ext.declarative import declared_attr
+from beanie import Document, Link, PydanticObjectId
+from beanie.odm.operators.update.general import Set
 
-# SQLAlchemy models
-Base = declarative_base()
+# MongoDB document models
+class UserModel(Document):
+    username: str = Field(index=True, unique=True)
+    email: str = Field(index=True, unique=True)
+    hashed_password: str
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.now)
+    
+    class Settings:
+        name = "users"
+        use_state_management = True
 
-class User(Base):
-    __tablename__ = "users"
+class ProjectModel(Document):
+    name: str
+    description: Optional[str] = None
+    user_id: PydanticObjectId
+    created_at: datetime = Field(default_factory=datetime.now)
     
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, index=True)
-    email = Column(String(100), unique=True, index=True)
-    hashed_password = Column(String(100))
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.now)
-    
-    # Relationships
-    projects = relationship("Project", back_populates="user")
-    conversations = relationship("Conversation", back_populates="user")
+    class Settings:
+        name = "projects"
+        use_state_management = True
 
-class Project(Base):
-    __tablename__ = "projects"
+class MessageModel(Document):
+    role: str  # "user", "assistant", "system"
+    content: str
+    conversation_id: PydanticObjectId
+    timestamp: datetime = Field(default_factory=datetime.now)
     
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100))
-    description = Column(Text, nullable=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    created_at = Column(DateTime, default=datetime.now)
-    
-    # Relationships
-    user = relationship("User", back_populates="projects")
-    conversations = relationship("Conversation", back_populates="project")
+    class Settings:
+        name = "messages"
+        use_state_management = True
 
-class Conversation(Base):
-    __tablename__ = "conversations"
+class ConversationModel(Document):
+    title: str
+    is_pinned: bool = False
+    user_id: PydanticObjectId
+    project_id: Optional[PydanticObjectId] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
     
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(200))
-    is_pinned = Column(Boolean, default=False)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    class Settings:
+        name = "conversations"
+        use_state_management = True
     
-    # Relationships
-    user = relationship("User", back_populates="conversations")
-    project = relationship("Project", back_populates="conversations")
-    messages = relationship("MessageDB", back_populates="conversation", order_by="MessageDB.timestamp")
-
-class MessageDB(Base):
-    __tablename__ = "messages"
+    # Helper method to fetch related messages
+    async def get_messages(self) -> List[MessageModel]:
+        return await MessageModel.find(
+            MessageModel.conversation_id == self.id
+        ).sort("+timestamp").to_list()
     
-    id = Column(Integer, primary_key=True, index=True)
-    role = Column(String(20))
-    content = Column(Text)
-    conversation_id = Column(Integer, ForeignKey("conversations.id"))
-    timestamp = Column(DateTime, default=datetime.now)
-    
-    # Relationships
-    conversation = relationship("Conversation", back_populates="messages")
+    # Helper method to update the timestamp
+    async def touch(self):
+        await self.update(Set({ConversationModel.updated_at: datetime.now()}))
 
 # Pydantic models for API
 class Message(BaseModel):
@@ -77,13 +72,13 @@ class ChatRequest(BaseModel):
     model: Optional[str] = "claude-3-7-sonnet-latest"
     max_tokens: Optional[int] = 2048
     system_prompt: Optional[str] = None
-    conversation_id: Optional[int] = None
+    conversation_id: Optional[str] = None
     
 class ChatResponse(BaseModel):
     message: Message
     stop_reason: str
     tool_calls: Optional[List[Dict[str, Any]]] = None
-    conversation_id: Optional[int] = None
+    conversation_id: Optional[str] = None
 
 class UserCreate(BaseModel):
     username: str
@@ -91,7 +86,7 @@ class UserCreate(BaseModel):
     password: str
 
 class UserResponse(BaseModel):
-    id: int
+    id: str
     username: str
     email: str
     
@@ -103,7 +98,7 @@ class ProjectCreate(BaseModel):
     description: Optional[str] = None
 
 class ProjectResponse(BaseModel):
-    id: int
+    id: str
     name: str
     description: Optional[str]
     created_at: datetime
@@ -113,18 +108,18 @@ class ProjectResponse(BaseModel):
 
 class ConversationCreate(BaseModel):
     title: str
-    project_id: Optional[int] = None
+    project_id: Optional[str] = None
 
 class ConversationUpdate(BaseModel):
     title: Optional[str] = None
     is_pinned: Optional[bool] = None
-    project_id: Optional[int] = None
+    project_id: Optional[str] = None
 
 class ConversationResponse(BaseModel):
-    id: int
+    id: str
     title: str
     is_pinned: bool
-    project_id: Optional[int]
+    project_id: Optional[str]
     created_at: datetime
     updated_at: datetime
     

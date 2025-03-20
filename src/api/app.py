@@ -5,6 +5,7 @@ from .routers.chat import router as chat_router
 from .routers.search import router as search_router
 from .routers.conversations import router as conversations_router
 from .routers.users import router as users_router
+from .database import connect_to_mongo, close_mongo_connection
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -21,6 +22,15 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    
+    # Add event handlers for MongoDB connection
+    @app.on_event("startup")
+    async def startup_db_client():
+        await connect_to_mongo()
+    
+    @app.on_event("shutdown")
+    async def shutdown_db_client():
+        await close_mongo_connection()
     
     # Add routers
     app.include_router(chat_router)

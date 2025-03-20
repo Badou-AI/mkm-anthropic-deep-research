@@ -44,7 +44,8 @@ pip install -e .
 ANTHROPIC_API_KEY=your_anthropic_api_key
 OPENAI_API_KEY=your_openai_api_key
 SECRET_KEY=your_secret_key_for_jwt_tokens
-DATABASE_URL=sqlite:///./data/anthropic_chatbot.db  # Default SQLite database path
+MONGODB_URL=mongodb://localhost:27017  # Update with your MongoDB connection string
+MONGODB_DB=anthropic_chatbot
 ```
 
 4. Install frontend dependencies:

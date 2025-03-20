@@ -20,7 +20,7 @@ const Sidebar = () => {
   
   const { user, logout } = useAuth();
   
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [showPinned, setShowPinned] = useState<boolean>(false);
   const [newConvTitle, setNewConvTitle] = useState<string>('');
   const [newProjectName, setNewProjectName] = useState<string>('');

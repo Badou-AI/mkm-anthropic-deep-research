@@ -11,16 +11,16 @@ type Message = {
 };
 
 type Conversation = {
-  id: number;
+  id: string;
   title: string;
   is_pinned: boolean;
-  project_id: number | null;
+  project_id: string | null;
   created_at: string;
   updated_at: string;
 };
 
 type Project = {
-  id: number;
+  id: string;
   name: string;
   description: string | null;
   created_at: string;
@@ -38,12 +38,12 @@ type ConversationsContextType = {
   error: string | null;
   fetchConversations: () => Promise<void>;
   fetchProjects: () => Promise<void>;
-  fetchConversation: (id: number) => Promise<void>;
-  createConversation: (title: string, project_id?: number) => Promise<number>;
-  updateConversation: (id: number, data: { title?: string, is_pinned?: boolean, project_id?: number | null }) => Promise<void>;
-  deleteConversation: (id: number) => Promise<void>;
-  createProject: (name: string, description?: string) => Promise<number>;
-  deleteProject: (id: number) => Promise<void>;
+  fetchConversation: (id: string) => Promise<void>;
+  createConversation: (title: string, project_id?: string) => Promise<string>;
+  updateConversation: (id: string, data: { title?: string, is_pinned?: boolean, project_id?: string | null }) => Promise<void>;
+  deleteConversation: (id: string) => Promise<void>;
+  createProject: (name: string, description?: string) => Promise<string>;
+  deleteProject: (id: string) => Promise<void>;
   clearCurrentConversation: () => void;
 };
 
@@ -110,7 +110,7 @@ export const ConversationsProvider = ({ children }: { children: ReactNode }) => 
     }
   };
 
-  const fetchConversation = async (id: number) => {
+  const fetchConversation = async (id: string) => {
     if (!token) return;
     
     setIsLoading(true);
@@ -126,7 +126,7 @@ export const ConversationsProvider = ({ children }: { children: ReactNode }) => 
     }
   };
 
-  const createConversation = async (title: string, project_id?: number): Promise<number> => {
+  const createConversation = async (title: string, project_id?: string): Promise<string> => {
     if (!token) throw new Error('Authentication required');
     
     setIsLoading(true);
@@ -148,7 +148,7 @@ export const ConversationsProvider = ({ children }: { children: ReactNode }) => 
     }
   };
 
-  const updateConversation = async (id: number, data: { title?: string, is_pinned?: boolean, project_id?: number | null }) => {
+  const updateConversation = async (id: string, data: { title?: string, is_pinned?: boolean, project_id?: string | null }) => {
     if (!token) return;
     
     setIsLoading(true);
@@ -171,7 +171,7 @@ export const ConversationsProvider = ({ children }: { children: ReactNode }) => 
     }
   };
 
-  const deleteConversation = async (id: number) => {
+  const deleteConversation = async (id: string) => {
     if (!token) return;
     
     setIsLoading(true);
@@ -194,7 +194,7 @@ export const ConversationsProvider = ({ children }: { children: ReactNode }) => 
     }
   };
 
-  const createProject = async (name: string, description?: string): Promise<number> => {
+  const createProject = async (name: string, description?: string): Promise<string> => {
     if (!token) throw new Error('Authentication required');
     
     setIsLoading(true);
@@ -216,7 +216,7 @@ export const ConversationsProvider = ({ children }: { children: ReactNode }) => 
     }
   };
 
-  const deleteProject = async (id: number) => {
+  const deleteProject = async (id: string) => {
     if (!token) return;
     
     setIsLoading(true);

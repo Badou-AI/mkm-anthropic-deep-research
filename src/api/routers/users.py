@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import timedelta
+from beanie import PydanticObjectId
 
 from ..database import get_db
-from ..models.chat import User, UserCreate, UserResponse, Token
+from ..models.chat import UserModel, UserCreate, UserResponse, Token
 from ..auth import (
     get_password_hash, 
     authenticate_user, 
@@ -16,38 +17,42 @@ from ..auth import (
 router = APIRouter(tags=["users"])
 
 @router.post("/users/", response_model=UserResponse)
-async def create_user(user: UserCreate, db: Session = Depends(get_db)):
+async def create_user(user: UserCreate, db: AsyncIOMotorDatabase = Depends(get_db)):
     # Check if username exists
-    db_user = db.query(User).filter(User.username == user.username).first()
+    db_user = await UserModel.find_one(UserModel.username == user.username)
     if db_user:
         raise HTTPException(status_code=400, detail="Username already registered")
     
     # Check if email exists
-    db_email = db.query(User).filter(User.email == user.email).first()
+    db_email = await UserModel.find_one(UserModel.email == user.email)
     if db_email:
         raise HTTPException(status_code=400, detail="Email already registered")
     
     # Create new user
     hashed_password = get_password_hash(user.password)
-    db_user = User(
+    new_user = UserModel(
         username=user.username,
         email=user.email,
         hashed_password=hashed_password
     )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+    
+    await new_user.insert()
+    
+    return UserResponse(
+        id=str(new_user.id),
+        username=new_user.username,
+        email=new_user.email
+    )
 
 @router.post("/token", response_model=Token)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db)
 ):
-    user = authenticate_user(db, form_data.username, form_data.password)
+    user = await authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
@@ -60,5 +65,9 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/users/me", response_model=UserResponse)
-async def read_users_me(current_user: User = Depends(get_current_active_user)):
-    return current_user
+async def read_users_me(current_user: UserModel = Depends(get_current_active_user)):
+    return UserResponse(
+        id=str(current_user.id),
+        username=current_user.username,
+        email=current_user.email
+    )
