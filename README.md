@@ -39,10 +39,12 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e .
 ```
 
-3. Create a `.env` file in the root directory with your API keys:
+3. Create a `.env` file in the root directory with your API keys and other configuration:
 ```
 ANTHROPIC_API_KEY=your_anthropic_api_key
 OPENAI_API_KEY=your_openai_api_key
+SECRET_KEY=your_secret_key_for_jwt_tokens
+DATABASE_URL=sqlite:///./data/anthropic_chatbot.db  # Default SQLite database path
 ```
 
 4. Install frontend dependencies:
@@ -67,7 +69,12 @@ python -m src launch-server --reload
 
 The API will be available at http://localhost:8000 with the following endpoints:
 - `/chat` - For general chat interactions
+- `/chat/ws/{token}` - WebSocket endpoint for streaming chat
 - `/search` - For search capabilities
+- `/users` - User management (registration, profile)
+- `/token` - Authentication token endpoint
+- `/conversations` - Conversation management
+- `/projects` - Project/folder management
 
 ### Web UI
 
@@ -93,7 +100,11 @@ The web interface will be available at http://localhost:3000
 ### Frontend Components
 
 - Next.js application with the following features:
-  - Chat interface with streaming support
+  - ChatGPT-like interface with conversation history
+  - Project/folder organization for conversations
+  - Ability to pin important conversations
+  - User authentication system
+  - Streaming support for real-time AI responses
   - Search interface with configuration options
   - Responsive design with Tailwind CSS
 

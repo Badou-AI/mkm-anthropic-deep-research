@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import chat_router, search_router
+from .routers.chat import router as chat_router
+from .routers.search import router as search_router
+from .routers.conversations import router as conversations_router
+from .routers.users import router as users_router
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -22,5 +25,7 @@ def create_app() -> FastAPI:
     # Add routers
     app.include_router(chat_router)
     app.include_router(search_router)
+    app.include_router(conversations_router)
+    app.include_router(users_router)
     
     return app

@@ -3,8 +3,12 @@ from fastapi.responses import StreamingResponse
 from typing import List, Dict, Any, AsyncGenerator
 import json
 import asyncio
+from sqlalchemy.orm import Session
+from datetime import datetime
 
-from ..models.chat import ChatRequest, ChatResponse, Message
+from ..models.chat import ChatRequest, ChatResponse, Message, Conversation, MessageDB, User
+from ..database import get_db
+from ..auth import get_current_active_user
 from anthropic_openai import AgentLoop, Role, ChatMessage, StopReason
 from anthropic_openai.settings import Credentials
 
@@ -18,7 +22,11 @@ def get_agent_loop():
     )
 
 @router.post("/", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     agent_loop = get_agent_loop()
     
     # Convert from API models to internal models
@@ -60,18 +68,116 @@ async def chat(request: ChatRequest):
             if item.get("type") == "text":
                 text_content += item.get("text", "")
     
+    response_message = Message(
+        role="assistant",
+        content=text_content
+    )
+    
+    # Save conversation if conversation_id provided or create new one
+    conversation_id = request.conversation_id
+    conversation_updated = False
+    
+    if conversation_id:
+        # Get existing conversation
+        conversation = db.query(Conversation).filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id
+        ).first()
+        
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+    else:
+        # Create new conversation with first user message as title (truncated)
+        title = request.messages[0].content if request.messages else "New Conversation"
+        title = (title[:50] + "...") if len(title) > 50 else title
+        
+        conversation = Conversation(
+            title=title,
+            user_id=current_user.id
+        )
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+        conversation_id = conversation.id
+        conversation_updated = True
+    
+    # Save messages to database
+    for message in request.messages:
+        if not conversation_updated:
+            # Check if message already exists in this conversation
+            existing_msg = db.query(MessageDB).filter(
+                MessageDB.conversation_id == conversation_id,
+                MessageDB.role == message.role,
+                MessageDB.content == message.content,
+                MessageDB.timestamp == message.timestamp
+            ).first()
+            
+            if existing_msg:
+                continue  # Skip if message already exists
+        
+        # Add message to database
+        db_message = MessageDB(
+            role=message.role,
+            content=message.content,
+            conversation_id=conversation_id,
+            timestamp=message.timestamp or datetime.now()
+        )
+        db.add(db_message)
+    
+    # Save assistant response
+    db_assistant_message = MessageDB(
+        role=response_message.role,
+        content=response_message.content,
+        conversation_id=conversation_id,
+        timestamp=response_message.timestamp or datetime.now()
+    )
+    db.add(db_assistant_message)
+    
+    # Update conversation timestamp
+    conversation.updated_at = datetime.now()
+    db.commit()
+    
     return ChatResponse(
-        message=Message(
-            role="assistant",
-            content=text_content
-        ),
+        message=response_message,
         stop_reason=stop_reason,
-        tool_calls=tool_calls
+        tool_calls=tool_calls,
+        conversation_id=conversation_id
     )
 
-@router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[WebSocket, Dict] = {}
+        
+    async def connect(self, websocket: WebSocket, user_id: int):
+        await websocket.accept()
+        self.active_connections[websocket] = {"user_id": user_id}
+        
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            del self.active_connections[websocket]
+    
+    async def send_json(self, websocket: WebSocket, data: Dict):
+        if websocket in self.active_connections:
+            await websocket.send_text(json.dumps(data))
+
+manager = ConnectionManager()
+
+@router.websocket("/ws/{token}")
+async def websocket_endpoint(websocket: WebSocket, token: str, db: Session = Depends(get_db)):
+    from ..auth import get_current_user, JWTError
+    
+    try:
+        # Authenticate the user based on token
+        user = await get_current_user(token=token, db=db)
+        await manager.connect(websocket, user.id)
+    
+    except JWTError:
+        await websocket.close(code=4001, reason="Authentication failed")
+        return
+    except Exception as e:
+        await websocket.close(code=4000, reason=f"Connection error: {str(e)}")
+        return
+    
     agent_loop = get_agent_loop()
     
     try:
@@ -86,6 +192,55 @@ async def websocket_endpoint(websocket: WebSocket):
                 model = request_data.get("model", "claude-3-7-sonnet-latest")
                 max_tokens = request_data.get("max_tokens", 2048)
                 system_prompt = request_data.get("system_prompt", "You are a helpful assistant.")
+                conversation_id = request_data.get("conversation_id", None)
+                
+                # Handle conversation in database if conversation_id provided or create new one
+                if conversation_id:
+                    # Verify conversation exists and belongs to the user
+                    conversation = db.query(Conversation).filter(
+                        Conversation.id == conversation_id,
+                        Conversation.user_id == user.id
+                    ).first()
+                    
+                    if not conversation:
+                        await manager.send_json(websocket, {
+                            "type": "error",
+                            "message": "Conversation not found"
+                        })
+                        continue
+                else:
+                    # Create new conversation with first user message as title (truncated)
+                    title = messages[0].content if messages else "New Conversation"
+                    title = (title[:50] + "...") if len(title) > 50 else title
+                    
+                    conversation = Conversation(
+                        title=title,
+                        user_id=user.id
+                    )
+                    db.add(conversation)
+                    db.commit()
+                    db.refresh(conversation)
+                    conversation_id = conversation.id
+                    
+                    # Send back the conversation_id to the client
+                    await manager.send_json(websocket, {
+                        "type": "conversation_created",
+                        "conversation_id": conversation_id
+                    })
+                
+                # Save user messages to database
+                for message in messages:
+                    if message.role == "user":  # Only save the most recent user message
+                        # Check if this is the last user message
+                        if message == messages[-1] or all(m.role != "user" for m in messages[messages.index(message)+1:]):
+                            db_message = MessageDB(
+                                role=message.role,
+                                content=message.content,
+                                conversation_id=conversation_id,
+                                timestamp=message.timestamp or datetime.now()
+                            )
+                            db.add(db_message)
+                            db.commit()
                 
                 # Convert to internal format
                 conversation_history = [ChatMessage(role=msg.role, content=msg.content) for msg in messages]
@@ -100,34 +255,61 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
                 
                 if completion_stream is None:
-                    await websocket.send_text(json.dumps({
+                    await manager.send_json(websocket, {
                         "type": "error",
                         "message": "Failed to get completion stream from AI provider"
-                    }))
+                    })
                     continue
+                
+                # Variables to accumulate response
+                accumulated_response = ""
                 
                 # Stream chunks to the client
                 for chunk in completion_stream:
                     if chunk.type == "content_block_delta" and hasattr(chunk.delta, "text_delta"):
-                        await websocket.send_text(json.dumps({
+                        accumulated_response += chunk.delta.text
+                        await manager.send_json(websocket, {
                             "type": "chunk",
                             "content": chunk.delta.text
-                        }))
+                        })
                     elif chunk.type == "message_delta":
-                        await websocket.send_text(json.dumps({
+                        # Save complete response to database
+                        db_message = MessageDB(
+                            role="assistant",
+                            content=accumulated_response,
+                            conversation_id=conversation_id,
+                            timestamp=datetime.now()
+                        )
+                        db.add(db_message)
+                        
+                        # Update conversation timestamp
+                        conversation.updated_at = datetime.now()
+                        db.commit()
+                        
+                        await manager.send_json(websocket, {
                             "type": "stop",
-                            "stop_reason": chunk.delta.stop_reason
-                        }))
+                            "stop_reason": chunk.delta.stop_reason,
+                            "conversation_id": conversation_id
+                        })
                         break  # Ensure we exit the loop after stop message
+                        
             except Exception as inner_e:
                 print(f"Inner processing error: {inner_e}")
-                await websocket.send_text(json.dumps({"type": "error", "message": f"Processing error: {str(inner_e)}"}))
+                await manager.send_json(websocket, {
+                    "type": "error", 
+                    "message": f"Processing error: {str(inner_e)}"
+                })
             
     except WebSocketDisconnect:
+        manager.disconnect(websocket)
         print("Client disconnected")
     except Exception as e:
+        manager.disconnect(websocket)
         try:
-            await websocket.send_text(json.dumps({"type": "error", "message": f"Connection error: {str(e)}"})) 
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": f"Connection error: {str(e)}"
+            })) 
         except:
             print(f"Could not send error to client: {e}")
         print(f"WebSocket error: {e}")

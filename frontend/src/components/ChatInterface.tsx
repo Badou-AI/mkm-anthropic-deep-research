@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
+import { useAuth } from '../context/AuthContext';
+import { useConversations } from '../context/ConversationsContext';
 
 type Message = {
   role: 'user' | 'assistant' | 'system';
@@ -11,27 +12,42 @@ type Message = {
 };
 
 const ChatInterface = () => {
+  const { token } = useAuth();
+  const { currentConversation } = useConversations();
+  
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [wsEnabled, setWsEnabled] = useState(false);
+  const [wsEnabled, setWsEnabled] = useState(true);
   const [wsConnected, setWsConnected] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
+  const [conversationId, setConversationId] = useState<number | null>(null);
   
   const ws = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Update messages when conversation changes
+  useEffect(() => {
+    if (currentConversation) {
+      setMessages(currentConversation.messages);
+      setConversationId(currentConversation.id);
+    } else {
+      setMessages([]);
+      setConversationId(null);
+    }
+  }, [currentConversation]);
+
   // Connect to WebSocket when enabled
   useEffect(() => {
-    if (wsEnabled && !ws.current) {
+    if (wsEnabled && token && !ws.current) {
       connectWebSocket();
     }
     
     return () => {
       ws.current?.close();
     };
-  }, [wsEnabled]);
+  }, [wsEnabled, token]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -39,11 +55,13 @@ const ChatInterface = () => {
   }, [messages, streamingMessage]);
 
   const connectWebSocket = () => {
+    if (!token) return;
+    
     // Use window.location to dynamically determine the host
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
     const port = '8000'; // Backend port
-    const socket = new WebSocket(`${protocol}//${host}:${port}/chat/ws`);
+    const socket = new WebSocket(`${protocol}//${host}:${port}/chat/ws/${token}`);
     
     socket.onopen = () => {
       setWsConnected(true);
@@ -61,9 +79,17 @@ const ChatInterface = () => {
           setMessages(prev => [...prev, { role: 'assistant', content: streamingMessage }]);
           setStreamingMessage('');
           setIsLoading(false);
+          
+          // Set conversation ID if one was created
+          if (data.conversation_id) {
+            setConversationId(data.conversation_id);
+          }
         } else if (data.type === 'error') {
           setError(data.message);
           setIsLoading(false);
+        } else if (data.type === 'conversation_created') {
+          // Update the conversation ID if a new one was created
+          setConversationId(data.conversation_id);
         }
       } catch (err) {
         console.error('Error parsing WebSocket message:', err);
@@ -105,19 +131,41 @@ const ChatInterface = () => {
           messages: [...messages, userMessage],
           model: 'claude-3-7-sonnet-latest',
           max_tokens: 2048,
-          system_prompt: 'You are a helpful assistant.'
+          system_prompt: 'You are a helpful assistant.',
+          conversation_id: conversationId
         }));
       } else {
-        // Send via REST API
-        const response = await axios.post('http://localhost:8000/chat/', {
-          messages: [...messages, userMessage],
-          model: 'claude-3-7-sonnet-latest',
-          max_tokens: 2048,
-          system_prompt: 'You are a helpful assistant.'
+        // Fallback to REST API if WebSocket is not connected
+        const url = 'http://localhost:8000/chat/';
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        };
+        
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            messages: [...messages, userMessage],
+            model: 'claude-3-7-sonnet-latest',
+            max_tokens: 2048,
+            system_prompt: 'You are a helpful assistant.',
+            conversation_id: conversationId
+          })
         });
         
-        const aiResponse = response.data;
-        setMessages(prev => [...prev, aiResponse.message]);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        setMessages(prev => [...prev, data.message]);
+        
+        // Set conversation ID if one was created
+        if (data.conversation_id) {
+          setConversationId(data.conversation_id);
+        }
+        
         setIsLoading(false);
       }
     } catch (err) {
@@ -128,17 +176,26 @@ const ChatInterface = () => {
   };
 
   return (
-    <div className="w-full h-[80vh] flex flex-col bg-white rounded-lg shadow-md overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-white rounded-lg shadow-md overflow-hidden">
       <div className="flex-1 overflow-y-auto p-4">
-        {messages.map((msg, index) => (
-          <div key={index} className={`mb-4 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-            <div
-              className={`inline-block max-w-[70%] p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-100 text-blue-900' : 'bg-gray-100 text-gray-900'}`}
-            >
-              <ReactMarkdown>{msg.content}</ReactMarkdown>
+        {messages.length === 0 ? (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center text-gray-500">
+              <h2 className="text-2xl font-bold mb-2">How can I help you today?</h2>
+              <p>Ask me anything, or start a new conversation from the sidebar.</p>
             </div>
           </div>
-        ))}
+        ) : (
+          messages.map((msg, index) => (
+            <div key={index} className={`mb-4 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
+              <div
+                className={`inline-block max-w-[70%] p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-100 text-blue-900' : 'bg-gray-100 text-gray-900'}`}
+              >
+                <ReactMarkdown>{msg.content}</ReactMarkdown>
+              </div>
+            </div>
+          ))
+        )}
         
         {streamingMessage && (
           <div className="mb-4 text-left">

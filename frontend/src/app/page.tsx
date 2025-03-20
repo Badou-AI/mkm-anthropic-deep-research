@@ -1,30 +1,51 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ChatInterface from '../components/ChatInterface';
 import SearchInterface from '../components/SearchInterface';
+import Sidebar from '../components/Sidebar';
+import AuthForms from '../components/AuthForms';
+import { useAuth } from '../context/AuthContext';
 
 export default function Home() {
+  const { isAuthenticated, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'chat' | 'search'>('chat');
-
+  
+  // If loading, show a simple loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+  
+  // If not authenticated, show login/register form
+  if (!isAuthenticated) {
+    return <AuthForms />;
+  }
+  
+  // Main application with sidebar and content
   return (
-    <main className="flex min-h-screen flex-col items-center p-4 md:p-8 lg:p-12">
-      <div className="w-full max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-center mb-8">Anthropic-OpenAI Agent</h1>
-        
+    <main className="flex min-h-screen">
+      {/* Sidebar */}
+      <Sidebar />
+      
+      {/* Main content */}
+      <div className="flex-1 p-6 overflow-hidden">
         {/* Tab navigation */}
-        <div className="flex justify-center mb-8">
-          <div className="border-b border-gray-200 w-full max-w-md">
-            <nav className="flex -mb-px justify-center" aria-label="Tabs">
+        <div className="mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="flex -mb-px" aria-label="Tabs">
               <button
                 onClick={() => setActiveTab('chat')}
-                className={`w-1/2 py-3 px-4 text-center border-b-2 font-medium text-sm ${activeTab === 'chat' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                className={`mr-8 py-3 px-1 text-center border-b-2 font-medium text-sm ${activeTab === 'chat' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
               >
                 Chat
               </button>
               <button
                 onClick={() => setActiveTab('search')}
-                className={`w-1/2 py-3 px-4 text-center border-b-2 font-medium text-sm ${activeTab === 'search' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                className={`mr-8 py-3 px-1 text-center border-b-2 font-medium text-sm ${activeTab === 'search' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
               >
                 Search
               </button>
@@ -33,7 +54,7 @@ export default function Home() {
         </div>
         
         {/* Tab content */}
-        <div className="w-full">
+        <div className="h-[calc(100vh-10rem)]">
           {activeTab === 'chat' ? (
             <ChatInterface />
           ) : (
