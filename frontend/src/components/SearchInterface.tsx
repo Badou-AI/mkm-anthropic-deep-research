@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
+import { FaSearch } from 'react-icons/fa';
 
 type SearchResult = {
   query: string;
@@ -53,14 +54,29 @@ const SearchInterface = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Search Query
             </label>
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Enter your search query"
-              className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={isLoading}
-            />
+            <div className="relative">
+              <textarea
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  // Auto adjust height
+                  e.target.style.height = 'auto';
+                  e.target.style.height = e.target.scrollHeight + 'px';
+                }}
+                placeholder="Enter your search query"
+                className="w-full p-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none overflow-hidden min-h-[40px]"
+                disabled={isLoading}
+                rows={1}
+                style={{ height: 'auto' }}
+              />
+              <button
+                type="submit"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-blue-600 focus:outline-none disabled:text-gray-300"
+                disabled={isLoading || !query.trim()}
+              >
+                <FaSearch className="w-5 h-5" />
+              </button>
+            </div>
           </div>
           
           <div className="mb-4">

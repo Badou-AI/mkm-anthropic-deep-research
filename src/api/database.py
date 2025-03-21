@@ -62,16 +62,13 @@ async def get_db():
     return client[DATABASE_NAME]
 
 # Initialize DB on startup
-def init_db():
-    """Initialize MongoDB connection synchronously (for startup)"""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(connect_to_mongo())
-    loop.close()
+async def init_db():
+    """Initialize MongoDB connection asynchronously (for startup)"""
+    await connect_to_mongo()
 
-# Call this from main.py or server.py on startup
+# Don't initialize DB here - we'll do it in the FastAPI startup event
 try:
-    init_db()
+    pass  # Removed synchronous init_db() call
 except Exception as e:
     logger.error(f"Failed to initialize database: {e}")
     raise e

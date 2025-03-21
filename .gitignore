@@ -39,3 +39,11 @@ ENV/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Frontend
+frontend/.next/
+frontend/node_modules/
+
+node_modules/
+
+
